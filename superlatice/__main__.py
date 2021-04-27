@@ -58,6 +58,7 @@ def fill_columns(data: pd.DataFrame) -> pd.DataFrame:
             else:
                 m = 0
             i += 1
+    data = data.fillna(0)
     return data
 
 
@@ -80,6 +81,43 @@ def plot_graph(data: pd.DataFrame):
     del data['time']
     return data.plot().get_figure()
 
+
+def shut_mean(data: pd.DataFrame, pieces: int, width: float):
+    result_data = pd.DataFrame()
+
+    shutters = data.columns.tolist()
+    shutters.remove('time')
+
+    if not data['shut7'].iat[0].astype(float) == 0:
+        while not data.empty:
+            if not data['shut7'].astype(float).eq(0).all() and not data['shut7'].astype(float).eq(1).all():
+                # if open in the beginning
+                row_to_add = {}
+                close_id = data['shut7'].astype(float).ne(1).idxmax()
+                non_first_shut = data.iloc[close_id:]
+                open_id = non_first_shut['shut7'].astype(float).ne(0).idxmax()
+                for s in shutters:
+
+                    row_to_add[s] = data[s].iloc[0:open_id].sum()
+
+                row_to_add['time'] = (data['time'].iat[open_id]+data['time'].iat[0])/2
+                result_data = result_data.append(row_to_add, ignore_index=True)
+                data = data.iloc[open_id:]
+                data = data.reset_index(drop=True)
+            else:
+                # for s in shutters:
+                #     row_to_add[s] = data[s].iloc[0:len(data.index)-1].sum()
+                # row_to_add['time'] = (data['time'].iat[len(data.index)-1]+data['time'].iat[0])/2
+                # result_data = result_data.append(row_to_add, ignore_index=True)
+                break
+    result_data['shut4'] = result_data['shut4']*0.21  # for Al
+    result_data['shut7'] = result_data['shut7']*0.45  # for Ga
+
+    result_data = result_data.set_index('time')
+
+    result_data = result_data.div(result_data.sum(axis=1), axis=0)
+
+    return result_data.plot().get_figure()
 
 def mean(data: pd.DataFrame, pieces: int, width: float):
     maxtime = int(data['time'].at[len(data)-1])
@@ -157,15 +195,22 @@ def main(self) -> None:
         help="custom output path to save results. if not provided input file dir is used by default"
     )
 
+    parser.add_argument(
+        "--shut", "-s",
+        action="store_true",
+        help="mean by time shutter opens and closes"
+    )
+
     args = parser.parse_args()
     path = args.path
     plot = args.plot
     pieces = args.mean
     width = args.width
     output_path = args.output
+    shut = args.shut
 
     # default action with no flags provided
-    if (plot is False and pieces is None) or plot:
+    if (plot is False and pieces is None and shut is False) or plot:
         for file in path:
             fig1 = plot_graph(separate_shutters(load_file(file)))
             if output_path is not None:
@@ -191,6 +236,20 @@ def main(self) -> None:
                 p = Path(file).stem
                 d = Path(file).parent
                 fig2.savefig(str(d) + '\mean_' + str(p) + '.jpg')
+                print('mean data written to ', str(d))
+
+    if shut is not False:
+        for file in path:
+            fig3 = shut_mean(separate_shutters(load_file(file)), pieces, width)
+            if output_path is not None:
+                if check_output(output_path):
+                    p = Path(file).stem
+                    fig3.savefig(output_path + '\\' + str(p) + '_shut.jpg')
+                    print('mean data written to ', output_path)
+            else:
+                p = Path(file).stem
+                d = Path(file).parent
+                fig3.savefig(str(d) + '\\' + str(p) + '_shut.jpg')
                 print('mean data written to ', str(d))
 
 
